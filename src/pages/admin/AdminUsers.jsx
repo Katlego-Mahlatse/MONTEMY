@@ -79,7 +79,7 @@ export default function AdminUsers() {
   }, {})
 
   return (
-    <div style={{ background: s.navy, minHeight: '100vh', color: 'white', fontFamily: 'Arial' }}>
+    <div style={{ background: s.navy, minHeight: '100vh', color: 'white', fontFamily: 'Arial' }} onClick={() => setOpenMenu(null)}>
 
       {/* Navbar */}
       <nav style={{ background: s.turquoise, padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -106,7 +106,7 @@ export default function AdminUsers() {
         {/* Filters */}
         <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '10px', marginBottom: '1.5rem' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email or school..."
-            style={{ width: '100%', padding: '0.8rem', border: `2px solid ${s.turquoise}`, borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem', marginBottom: '1rem' }} />
+            style={{ width: '100%', padding: '0.8rem', border: `2px solid ${s.turquoise}`, borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem', marginBottom: '1rem', boxSizing: 'border-box' }} />
           <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
             style={{ padding: '0.8rem', border: `2px solid ${s.turquoise}`, borderRadius: '8px', background: s.navy, color: 'white', fontSize: '1rem' }}>
             <option value="">All Roles</option>
@@ -131,8 +131,59 @@ export default function AdminUsers() {
               </div>
 
               {/* Options Menu */}
-              <div style={{ position: 'relative' }}>
+              <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
                 <button onClick={() => setOpenMenu(openMenu === user.id ? null : user.id)}
                   style={{ background: 'none', border: 'none', color: s.turquoise, fontSize: '1.2rem', cursor: 'pointer', padding: '0.5rem' }}>⋯</button>
                 {openMenu === user.id && (
                   <div style={{ position: 'absolute', top: '100%', right: 0, background: s.navy, border: `1px solid ${s.turquoise}`, borderRadius: '8px', padding: '0.5rem', minWidth: '180px', zIndex: 100 }}>
+                    <button onClick={() => { toggleVerify(user); setOpenMenu(null) }}
+                      style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer', textAlign: 'left', borderRadius: '5px' }}
+                      onMouseEnter={e => e.target.style.background = 'rgba(64,224,208,0.1)'}
+                      onMouseLeave={e => e.target.style.background = 'none'}>
+                      {user.isVerified ? '🔒 Unverify' : '✅ Verify'}
+                    </button>
+                    <button onClick={() => { setDeleteModal(user); setOpenMenu(null) }}
+                      style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', textAlign: 'left', borderRadius: '5px' }}
+                      onMouseEnter={e => e.target.style.background = 'rgba(231,76,60,0.1)'}
+                      onMouseLeave={e => e.target.style.background = 'none'}>
+                      🗑️ Delete User
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* User Details */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', fontSize: '0.9rem', color: '#ccc' }}>
+              <div>📧 {user.email}</div>
+              <div>🏫 {user.schoolName}</div>
+              {user.grade && <div>📖 Grade: {user.grade}</div>}
+              {user.class && <div>🏷️ Class: {user.class}</div>}
+              {user.subjects && user.subjects.length > 0 && <div>📚 {user.subjects.join(', ')}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: s.navy, border: `2px solid ${s.turquoise}`, borderRadius: '12px', padding: '2rem', maxWidth: '400px', width: '90%' }}>
+            <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>Delete User</h3>
+            <p style={{ color: '#ccc', marginBottom: '1.5rem' }}>Are you sure you want to delete <strong style={{ color: 'white' }}>{deleteModal.name}</strong>? This cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={() => setDeleteModal(null)}
+                style={{ flex: 1, padding: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={deleteUser}
+                style={{ flex: 1, padding: '0.8rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
