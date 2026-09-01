@@ -1,107 +1,88 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { auth, db } from '../../firebase/config'
+import { signInWithEmailAndPassword } from 'firebase/auth'
+import { collection, getDocs } from 'firebase/firestore'
 import { BACKGROUND_VIDEO } from '../../config/media'
 
-const accountTypes = [
-  {
-    icon: '🎓',
-    title: 'Students',
-    description: 'Upload homework, get 24/7 tutor support, communicate with teachers, access learning materials, and track your academic progress.',
-    label: 'Create Student Account',
-    path: '/signup/student'
-  },
-  {
-    icon: '📚',
-    title: 'Teachers',
-    description: 'Create and manage classes, assign homework, track student progress, communicate with students and parents, and access teaching resources.',
-    label: 'Create Teacher Account',
-    path: '/signup/teacher'
-  },
-  {
-    icon: '👨‍👩‍👧',
-    title: 'Parents',
-    description: 'Monitor your child\'s academic progress, communicate with teachers, view assignments and grades, and receive important school notifications.',
-    label: 'Create Parent Account',
-    path: '/signup/parent'
-  },
-  {
-    icon: '👔',
-    title: 'Principals',
-    description: 'Manage school operations, oversee staff and faculty, generate reports, monitor academic performance, and coordinate school activities.',
-    label: 'Create Principal Account',
-    path: '/signup/principal'
-  },
-  {
-    icon: '👥',
-    title: 'Staff Members',
-    description: 'This account is for staff members excluding principals and teachers. Communicate with all school members, track schedules and more.',
-    label: 'Create Staff Account',
-    path: '/signup/staff'
-  },
-  {
-    icon: '⚙️',
-    title: 'Administrators',
-    description: 'Manage system settings, user accounts, school data, technical configurations, and provide platform support for all users.',
-    label: 'Create Admin Account',
-    path: '/signup/admin'
-  }
-]
-
-export default function Signup() {
+export default function AdminLogin() {
   const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [message, setMessage] = useState({ text: '', type: '' })
+  const [loading, setLoading] = useState(false)
+
+  const showMsg = (text, type) => setMessage({ text, type })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const snap = await getDocs(collection(db, 'admins'))
+      const found = snap.docs.find(d => d.data().email?.toLowerCase() === email.trim().toLowerCase())
+      if (!found) { showMsg('Admin account not found.', 'error'); setLoading(false); return }
+      await signInWithEmailAndPassword(auth, email.trim(), password)
+      showMsg('Login successful! Redirecting...', 'success')
+      setTimeout(() => navigate('/admin/dashboard'), 1500)
+    } catch (err) {
+      showMsg('Login failed: ' + err.message, 'error')
+    }
+    setLoading(false)
+  }
 
   return (
-    <div style={{ minHeight: '100vh', fontFamily: 'Segoe UI, sans-serif', color: 'white', position: 'relative' }}>
+    <div style={{ position: 'relative', minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem', fontFamily: 'Arial' }}>
 
-      {/* Background */}
       {BACKGROUND_VIDEO ? (
-        <video autoPlay loop muted playsInline
-          style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: -1 }}>
+        <video autoPlay loop muted playsInline style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: -1 }}>
           <source src={BACKGROUND_VIDEO} type="video/mp4" />
         </video>
       ) : (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(135deg, #001F3F 0%, #003366 100%)', zIndex: -1 }} />
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: '#001F3F', zIndex: -1 }} />
       )}
 
-      {/* Navbar */}
-      <nav style={{ background: '#40E0D0', padding: '1rem 2rem', display: 'flex', alignItems: 'center', boxShadow: '0 4px 12px rgba(64,224,208,0.3)' }}>
-        <div style={{ color: '#001F3F', fontSize: '1.8rem', fontWeight: 'bold' }}>MONTEMY</div>
-      </nav>
+      <div style={{ background: 'rgba(255,255,255,0.1)', padding: '2rem', borderRadius: '10px', borderLeft: '4px solid #40E0D0', maxWidth: '400px', width: '100%', color: 'white' }}>
+        <div style={{ color: '#40E0D0', fontSize: '2rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '0.5rem' }}>MONTEMY</div>
+        <h2 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>Admin Login</h2>
+        <p style={{ textAlign: 'center', color: '#aaa', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Restricted access — admins only</p>
 
-      {/* Content */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <h1 style={{ color: '#40E0D0', fontSize: '2.5rem', textShadow: '0 0 15px rgba(64,224,208,0.7)' }}>Create Account</h1>
-        </div>
+        {message.text && (
+          <div style={{ padding: '1rem', marginBottom: '1rem', borderRadius: '5px', background: message.type === 'error' ? '#ff6b6b' : '#90EE90', color: message.type === 'error' ? 'white' : 'darkgreen' }}>
+            {message.text}
+          </div>
+        )}
 
-        {/* Cards Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
-          {accountTypes.map((account) => (
-            <div key={account.title}
-              style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '12px', padding: '2rem', textAlign: 'center', border: '1px solid rgba(64,224,208,0.3)', boxShadow: '0 0 15px rgba(64,224,208,0.2)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.3s' }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 30px rgba(64,224,208,0.7)'}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 15px rgba(64,224,208,0.2)'}>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ color: '#40E0D0', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@montemy.com"
+              style={{ width: '100%', padding: '0.8rem', borderRadius: '5px', border: 'none', color: '#001F3F', boxSizing: 'border-box' }} />
+          </div>
 
-              <div>
-                <div style={{ fontSize: '3.5rem', marginBottom: '1.5rem' }}>{account.icon}</div>
-                <h2 style={{ color: '#40E0D0', fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold' }}>{account.title}</h2>
-                <p style={{ color: '#CCCCCC', marginBottom: '2rem', lineHeight: '1.6' }}>{account.description}</p>
-              </div>
-
-              <button onClick={() => navigate(account.path)}
-                style={{ background: '#40E0D0', color: '#001F3F', border: 'none', padding: '1rem 2rem', borderRadius: '8px', fontWeight: 'bold', fontSize: '1.1rem', cursor: 'pointer', width: '100%', boxShadow: '0 0 20px rgba(64,224,208,0.7)' }}>
-                {account.label}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ color: '#40E0D0', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Password</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required
+                style={{ width: '100%', padding: '0.8rem', borderRadius: '5px', border: 'none', color: '#001F3F', boxSizing: 'border-box' }} />
+              <button type="button" onClick={() => setShowPassword(!showPassword)}
+                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>
+                {showPassword ? '🙈' : '👁️'}
               </button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Footer */}
-        <div style={{ textAlign: 'center', marginTop: '3rem', color: '#CCCCCC', fontSize: '0.9rem' }}>
-          <p>Already have an account?{' '}
-            <span onClick={() => navigate('/')} style={{ color: '#40E0D0', cursor: 'pointer', textDecoration: 'underline' }}>Sign in here</span>
-          </p>
-          <p style={{ marginTop: '0.5rem' }}>© 2024 Montemy. All rights reserved.</p>
+          <button type="submit" disabled={loading}
+            style={{ background: '#40E0D0', color: '#001F3F', padding: '1rem', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', width: '100%', marginTop: '1rem', boxShadow: '0 0 15px #40E0D0', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Signing in...' : 'Login as Admin'}
+          </button>
+        </form>
+
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button onClick={() => navigate('/')}
+            style={{ color: '#40E0D0', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.9rem' }}>
+            ← Back to Login
+          </button>
         </div>
       </div>
     </div>
