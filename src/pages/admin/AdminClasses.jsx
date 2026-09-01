@@ -148,3 +148,31 @@ export default function AdminClasses() {
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button onClick={createClass} style={{ background: s.turquoise, color: s.navy, padding: '0.8rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', flex: 1 }}>Create</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', padding: '0.8rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: s.navy, border: `2px solid ${s.turquoise}`, borderRadius: '12px', padding: '2rem', maxWidth: '400px', width: '90%' }}>
+            <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>Delete Class</h3>
+            <p style={{ color: '#ccc', marginBottom: '1.5rem' }}>Are you sure you want to delete <strong style={{ color: 'white' }}>{deleteModal.name}</strong>? This cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={() => setDeleteModal(null)}
+                style={{ flex: 1, padding: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={deleteClass}
+                style={{ flex: 1, padding: '0.8rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
