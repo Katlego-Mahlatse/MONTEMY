@@ -3,319 +3,324 @@ import { useNavigate } from 'react-router-dom'
 import { auth, db } from '../../firebase/config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where } from 'firebase/firestore'
+import { BACKGROUND_VIDEO } from '../../config/media'
+import { glassCard, glassNav, glassBtn, glassInput, addRipple, C } from '../../styles/glass'
 
-const ADMIN_EMAIL = 'Montemyadmin@gmail.com'
+const ALL_COLLECTIONS = ['students','teachers','parents','principals','tutors','schoolMembers']
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
-  const [stats, setStats] = useState({ schools: 0, students: 0, teachers: 0, parents: 0 })
-  const [allSchools, setAllSchools] = useState([])
+  const [tab, setTab] = useState('overview')
   const [allUsers, setAllUsers] = useState([])
-  const [schoolSearch, setSchoolSearch] = useState('')
+  const [allSchools, setAllSchools] = useState([])
+  const [allTutorOrgs, setAllTutorOrgs] = useState([])
   const [userSearch, setUserSearch] = useState('')
-  const [userResults, setUserResults] = useState([])
-  const [showUserResults, setShowUserResults] = useState(false)
-  const [openMenu, setOpenMenu] = useState(null)
-  const [deleteSchoolModal, setDeleteSchoolModal] = useState(null)
-  const [deleteUserModal, setDeleteUserModal] = useState(null)
-  const [editingUser, setEditingUser] = useState(null)
+  const [schoolSearch, setSchoolSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [currentUser, setCurrentUser] = useState(null)
-
-  const isAdmin = (user) => user && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+  const [newSchoolName, setNewSchoolName] = useState('')
+  const [newOrgName, setNewOrgName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [deleteModal, setDeleteModal] = useState(null)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCurrentUser(user)
-        loadData()
-      } else {
-        navigate('/')
-      }
+      if (!user) navigate('/')
+      else loadData()
     })
     return () => unsub()
   }, [])
 
   const getAllUsers = async (col) => {
     const snap = await getDocs(collection(db, col))
-    return snap.docs.map(d => ({
-      id: d.id, collection: col, role: col,
-      name: d.data().name || d.data().fullName ||
-        (d.data().parentFirstName ? `${d.data().parentFirstName} ${d.data().parentLastName}` : 'No Name'),
-      email: d.data().email || 'No Email',
-      schoolName: d.data().schoolName || d.data().schoolId || 'Unknown School',
-      schoolId: d.data().schoolId || d.data().schoolName || 'No School',
-      isVerified: d.data().isVerified !== undefined ? d.data().isVerified : true,
-      grade: d.data().grade || '',
-      class: d.data().class || '',
-      subjects: d.data().subjects || [],
-      children: d.data().children || [],
-      parents: d.data().parents || [],
-      ...d.data()
-    }))
+    return snap.docs.map(d => ({ id: d.id, col, role: col, ...d.data() }))
   }
 
   const loadData = async () => {
+    setLoading(true)
     try {
+      const results = await Promise.all(ALL_COLLECTIONS.map(c => getAllUsers(c)))
+      setAllUsers(results.flat())
+
       const schoolsSnap = await getDocs(collection(db, 'schools'))
-      const schoolsData = schoolsSnap.docs.map(d => ({
-        id: d.id, name: d.data().name || d.id,
-        schoolID: d.data().schoolID || d.id, isActive: d.data().isActive !== false
-      }))
+      setAllSchools(schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
 
-      const [students, teachers, parents, principals] = await Promise.all([
-        getAllUsers('students'), getAllUsers('teachers'),
-        getAllUsers('parents'), getAllUsers('principals')
-      ])
-
-      const combined = [...students, ...teachers, ...parents, ...principals]
-      setAllUsers(combined)
-      setStats({ schools: schoolsData.length, students: students.length, teachers: teachers.length, parents: parents.length })
-
-      const schoolsWithUsers = schoolsData.map(school => ({
-        ...school,
-        students: students.filter(u => u.schoolId === school.id),
-        teachers: teachers.filter(u => u.schoolId === school.id),
-        parents: parents.filter(u => u.schoolId === school.id),
-        principals: principals.filter(u => u.schoolId === school.id),
-      }))
-      setAllSchools(schoolsWithUsers)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+      const tutorOrgsSnap = await getDocs(collection(db, 'tutorOrganizations'))
+      setAllTutorOrgs(tutorOrgsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+    } catch (e) { console.error(e) }
+    setLoading(false)
   }
 
-  const handleUserSearch = (val) => {
-    setUserSearch(val)
-    if (!val) { setShowUserResults(false); return }
-    const term = val.toLowerCase()
-    const filtered = allUsers.filter(u =>
-      u.name.toLowerCase().includes(term) ||
-      u.email.toLowerCase().includes(term) ||
-      u.schoolName.toLowerCase().includes(term) ||
-      u.role.toLowerCase().includes(term)
-    )
-    setUserResults(filtered)
-    setShowUserResults(true)
+  const handleLogout = async () => {
+    await signOut(auth)
+    localStorage.removeItem('montemy_role')
+    navigate('/')
   }
 
-  const filteredSchools = allSchools.filter(s =>
-    s.name.toLowerCase().includes(schoolSearch.toLowerCase()) ||
-    s.schoolID.toLowerCase().includes(schoolSearch.toLowerCase())
-  )
-
-  const createSchool = async () => {
-    if (!isAdmin(currentUser)) return alert('❌ Access Denied')
-    const name = prompt('Enter the name for the new school:')
-    if (!name) return
+  const toggleVerify = async (user) => {
     try {
-      await setDoc(doc(db, 'schools', name), {
-        name, schoolID: name, isActive: true, createdAt: serverTimestamp()
-      })
-      alert(`✅ School "${name}" created!`)
-      loadData()
-    } catch (err) { alert('❌ Error: ' + err.message) }
-  }
-
-  const deleteSchool = async () => {
-    if (!isAdmin(currentUser)) return alert('❌ Access Denied')
-    try {
-      const cols = ['students', 'teachers', 'parents', 'principals']
-      for (const col of cols) {
-        const q = query(collection(db, col), where('schoolId', '==', deleteSchoolModal.id))
-        const snap = await getDocs(q)
-        await Promise.all(snap.docs.map(d => deleteDoc(doc(db, col, d.id))))
-      }
-      await deleteDoc(doc(db, 'schools', deleteSchoolModal.id))
-      alert('✅ School deleted!')
-      setDeleteSchoolModal(null)
-      loadData()
-    } catch (err) { alert('❌ Error: ' + err.message) }
+      await updateDoc(doc(db, user.col, user.id), { isVerified: !user.isVerified })
+      setAllUsers(prev => prev.map(u => u.id === user.id && u.col === user.col ? { ...u, isVerified: !u.isVerified } : u))
+    } catch (e) { alert('Error: ' + e.message) }
   }
 
   const deleteUser = async () => {
     try {
-      await deleteDoc(doc(db, deleteUserModal.collection, deleteUserModal.id))
-      alert('✅ User deleted!')
-      setDeleteUserModal(null)
-      loadData()
-    } catch (err) { alert('❌ Error: ' + err.message) }
+      await deleteDoc(doc(db, deleteModal.col, deleteModal.id))
+      setAllUsers(prev => prev.filter(u => !(u.id === deleteModal.id && u.col === deleteModal.col)))
+      setDeleteModal(null)
+    } catch (e) { alert('Error: ' + e.message) }
   }
 
-  const toggleVerification = async (userId, col, val) => {
+  const createSchool = async () => {
+    if (!newSchoolName.trim()) return
+    setCreating(true)
     try {
-      await updateDoc(doc(db, col, userId), { isVerified: val })
-      setAllUsers(prev => prev.map(u => u.id === userId && u.collection === col ? { ...u, isVerified: val } : u))
-      setUserResults(prev => prev.map(u => u.id === userId && u.collection === col ? { ...u, isVerified: val } : u))
-    } catch (err) { alert('❌ Error: ' + err.message) }
+      const id = newSchoolName.trim().toLowerCase().replace(/\s+/g, '-')
+      await setDoc(doc(db, 'schools', id), { name: newSchoolName.trim(), isActive: true, createdAt: serverTimestamp() })
+      setNewSchoolName('')
+      loadData()
+    } catch (e) { alert('Error: ' + e.message) }
+    setCreating(false)
   }
 
-  const handleLogout = async () => {
-    if (confirm('Are you sure you want to logout?')) {
-      await signOut(auth)
-      navigate('/')
-    }
+  const createTutorOrg = async () => {
+    if (!newOrgName.trim()) return
+    setCreating(true)
+    try {
+      const id = newOrgName.trim().toLowerCase().replace(/\s+/g, '-')
+      await setDoc(doc(db, 'tutorOrganizations', id), { name: newOrgName.trim(), isActive: true, createdAt: serverTimestamp() })
+      setNewOrgName('')
+      loadData()
+    } catch (e) { alert('Error: ' + e.message) }
+    setCreating(false)
   }
 
-  const s = { navy: '#001F3F', turquoise: '#40E0D0' }
+  const pendingUsers = allUsers.filter(u => !u.isVerified)
+  const filteredUsers = allUsers.filter(u => {
+    const t = userSearch.toLowerCase()
+    return !t || (u.name || '').toLowerCase().includes(t) || (u.email || '').toLowerCase().includes(t) || (u.role || '').toLowerCase().includes(t)
+  })
+  const filteredSchools = allSchools.filter(s => s.name?.toLowerCase().includes(schoolSearch.toLowerCase()))
+
+  const stats = [
+    ['🎓 Students', allUsers.filter(u => u.col === 'students').length],
+    ['📖 Tutors', allUsers.filter(u => u.col === 'tutors').length],
+    ['🏫 Teachers', allUsers.filter(u => u.col === 'teachers').length],
+    ['👨‍👩‍👧 Parents', allUsers.filter(u => u.col === 'parents').length],
+    ['👔 Principals', allUsers.filter(u => u.col === 'principals').length],
+    ['🏢 Schools', allSchools.length],
+    ['📋 Tutor Orgs', allTutorOrgs.length],
+    ['⏳ Pending', pendingUsers.length],
+  ]
+
+  const tabs = ['overview', 'users', 'pending', 'schools', 'tutor-orgs']
 
   return (
-    <div style={{ background: s.navy, minHeight: '100vh', color: 'white', fontFamily: 'Arial' }}>
+    <div style={{ minHeight: '100vh', position: 'relative', color: 'white' }}>
+      {BACKGROUND_VIDEO ? (
+        <video autoPlay loop muted playsInline style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: -1 }}>
+          <source src={BACKGROUND_VIDEO} type="video/mp4" />
+        </video>
+      ) : (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(135deg, #001F3F 0%, #003366 100%)', zIndex: -1 }} />
+      )}
 
-      {/* Navbar */}
-      <nav style={{ background: s.turquoise, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ color: s.navy, fontSize: '1.5rem', fontWeight: 'bold' }}>MONTEMY ADMIN</div>
-        <button onClick={handleLogout} style={{ background: s.navy, color: s.turquoise, padding: '0.5rem 1rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Logout</button>
+      <style>{`
+        .admin-tab { transition: all 0.2s; cursor: pointer; padding: 0.6rem 1.2rem; border-radius: 8px; font-size: 0.9rem; border: none; white-space: nowrap; }
+        .user-row { transition: background 0.15s; }
+        .user-row:hover { background: rgba(64,224,208,0.07) !important; }
+        .act-input:focus { border-color: rgba(64,224,208,0.7) !important; }
+      `}</style>
+
+      {/* Nav */}
+      <nav style={glassNav}>
+        <span style={{ color: C.turquoise, fontWeight: '700', fontSize: '1.4rem' }}>MONTEMY ADMIN</span>
+        <button onClick={handleLogout} style={{ ...glassBtn, width: 'auto', padding: '0.5rem 1.2rem', fontSize: '0.9rem' }}>Logout</button>
       </nav>
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
+      {/* Tab bar */}
+      <div style={{ background: 'rgba(0,25,55,0.4)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(64,224,208,0.15)', padding: '0 1.5rem', display: 'flex', gap: '0.5rem', overflowX: 'auto' }}>
+        {tabs.map(t => (
+          <button key={t} className="admin-tab"
+            onClick={() => setTab(t)}
+            style={{ background: tab === t ? 'rgba(64,224,208,0.85)' : 'transparent', color: tab === t ? C.navy : 'rgba(255,255,255,0.6)', fontWeight: tab === t ? '700' : '400', textTransform: 'capitalize' }}>
+            {t.replace('-', ' ')} {t === 'pending' && pendingUsers.length > 0 ? `(${pendingUsers.length})` : ''}
+          </button>
+        ))}
+      </div>
 
-        {/* Status Badge */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <span style={{ background: '#2ecc71', padding: '0.5rem 1rem', borderRadius: '20px', fontWeight: 'bold' }}>System Admin</span>
-        </div>
+      <div style={{ maxWidth: '1300px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-          {[['Total Schools', stats.schools], ['Total Students', stats.students], ['Total Teachers', stats.teachers], ['Total Parents', stats.parents]].map(([label, val]) => (
-            <div key={label} style={{ background: 'rgba(255,255,255,0.1)', padding: '1.5rem', borderRadius: '15px', textAlign: 'center', borderLeft: `4px solid ${s.turquoise}` }}>
-              <div style={{ fontSize: '2rem', color: s.turquoise, fontWeight: 'bold' }}>{val}</div>
-              <div style={{ color: '#ccc', fontSize: '0.9rem' }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Search Bars */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
-          <input value={schoolSearch} onChange={e => setSchoolSearch(e.target.value)} placeholder="Search for schools..."
-            style={{ padding: '1rem', border: `2px solid ${s.turquoise}`, borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem' }} />
-          <input value={userSearch} onChange={e => handleUserSearch(e.target.value)} placeholder="Search for users (name, email, school)..."
-            style={{ padding: '1rem', border: `2px solid ${s.turquoise}`, borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem' }} />
-        </div>
-
-        {/* Action Buttons */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {[['🏫 Create New School', createSchool], ['👥 Manage Admin Users', () => navigate('/admin/users')], ['🆘 Support', () => navigate('/admin/chat')]].map(([label, fn]) => (
-            <button key={label} onClick={fn}
-              style={{ background: s.turquoise, color: s.navy, padding: '1rem 2rem', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', boxShadow: `0 0 15px ${s.turquoise}` }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* User Search Results */}
-        {showUserResults && (
-          <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>User Search Results</h3>
-            {userResults.length === 0 ? (
-              <p style={{ color: '#888', fontStyle: 'italic' }}>No users found.</p>
-            ) : userResults.map(user => (
-              <div key={user.id} style={{ background: 'rgba(255,255,255,0.1)', padding: '1.5rem', borderRadius: '10px', marginBottom: '1rem', borderLeft: `4px solid ${s.turquoise}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div>
-                    <div style={{ color: s.turquoise, fontSize: '1.2rem', fontWeight: 'bold' }}>{user.name}</div>
-                    <span style={{ background: 'rgba(64,224,208,0.2)', color: s.turquoise, padding: '0.3rem 1rem', borderRadius: '15px', fontSize: '0.8rem' }}>{user.role}</span>
-                    <span style={{ background: user.isVerified ? '#2ecc71' : '#e74c3c', color: 'white', padding: '0.3rem 0.8rem', borderRadius: '15px', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
-                      {user.isVerified ? 'Verified' : 'Not Verified'}
-                    </span>
-                  </div>
-                  <button onClick={() => setDeleteUserModal(user)}
-                    style={{ background: '#e74c3c', color: 'white', padding: '0.5rem 1rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                    Delete
-                  </button>
-                </div>
-                <div style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                  <div><strong>Email:</strong> {user.email}</div>
-                  <div><strong>School:</strong> {user.schoolName}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.9rem' }}>Verification:</span>
-                  <input type="checkbox" checked={user.isVerified} onChange={e => toggleVerification(user.id, user.collection, e.target.checked)} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Schools List */}
-        <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>All Schools</h3>
-        {loading ? (
-          <div style={{ color: s.turquoise, textAlign: 'center', padding: '2rem' }}>Loading all school data...</div>
-        ) : filteredSchools.length === 0 ? (
-          <p style={{ color: '#888', fontStyle: 'italic' }}>No schools found.</p>
-        ) : filteredSchools.map(school => (
-          <div key={school.id} style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: '15px', borderLeft: `4px solid ${s.turquoise}`, marginBottom: '1.5rem', position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: `1px solid ${s.turquoise}` }}>
-              <div>
-                <div style={{ color: s.turquoise, fontSize: '1.3rem', fontWeight: 'bold' }}>{school.name}</div>
-                <div style={{ color: '#ccc', fontSize: '0.8rem' }}>School ID: {school.schoolID}</div>
-                <div style={{ color: '#ccc', fontSize: '0.9rem' }}>Total Users: {school.students.length + school.teachers.length + school.parents.length + school.principals.length}</div>
-              </div>
-              <div style={{ position: 'relative' }}>
-                <button onClick={() => setOpenMenu(openMenu === school.id ? null : school.id)}
-                  style={{ background: 'none', border: 'none', color: s.turquoise, fontSize: '1.2rem', cursor: 'pointer', padding: '0.5rem' }}>⋯</button>
-                {openMenu === school.id && (
-                  <div style={{ position: 'absolute', top: '100%', right: 0, background: s.navy, border: `1px solid ${s.turquoise}`, borderRadius: '8px', padding: '0.5rem', minWidth: '180px', zIndex: 100 }}>
-                    {[
-                      ['Delete School', () => { setDeleteSchoolModal(school); setOpenMenu(null) }, '#e74c3c'],
-                      ['Free Trial Mode', () => alert(`School set to free trial`), 'white'],
-                      ['Enrolled Mode', () => alert(`School set to enrolled`), 'white'],
-                    ].map(([label, fn, color]) => (
-                      <div key={label} onClick={fn} style={{ padding: '0.8rem 1rem', color, cursor: 'pointer', borderRadius: '5px', fontSize: '0.9rem' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(64,224,208,0.2)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.8rem' }}>
-              {[['Students', school.students.length, 'students'], ['Teachers', school.teachers.length, 'teachers'], ['Principals', school.principals.length, 'principals'], ['Parents', school.parents.length, 'parents']].map(([label, count, type]) => (
-                <div key={label} onClick={() => navigate(`/admin/users?school=${school.id}&type=${type}`)}
-                  style={{ textAlign: 'center', padding: '0.8rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-                  <div style={{ fontSize: '1.3rem', color: s.turquoise, fontWeight: 'bold' }}>{count}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#ccc' }}>{label}</div>
+        {/* OVERVIEW */}
+        {tab === 'overview' && (
+          <>
+            <h2 style={{ color: C.turquoise, marginBottom: '1.5rem' }}>Overview</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+              {stats.map(([label, val]) => (
+                <div key={label} style={{ ...glassCard, padding: '1.25rem', textAlign: 'center' }} className="glass">
+                  <div style={{ fontSize: '1.8rem', color: C.turquoise, fontWeight: '700' }}>{val}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{label}</div>
                 </div>
               ))}
             </div>
-          </div>
-        ))}
-
-        {/* Delete School Modal */}
-        {deleteSchoolModal && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div style={{ background: s.navy, padding: '2rem', borderRadius: '15px', border: `2px solid ${s.turquoise}`, maxWidth: '400px', width: '100%', textAlign: 'center' }}>
-              <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>Delete School</h3>
-              <p style={{ color: '#ccc', marginBottom: '2rem' }}>Are you sure you want to delete "{deleteSchoolModal.name}"? This cannot be undone.</p>
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                <button onClick={deleteSchool} style={{ background: '#e74c3c', color: 'white', padding: '0.7rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Delete</button>
-                <button onClick={() => setDeleteSchoolModal(null)} style={{ background: '#666', color: 'white', padding: '0.7rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+            {pendingUsers.length > 0 && (
+              <div style={{ background: 'rgba(255,165,0,0.1)', border: '1px solid rgba(255,165,0,0.3)', borderRadius: '14px', padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ color: '#ffa500', fontWeight: '600' }}>⏳ {pendingUsers.length} account{pendingUsers.length > 1 ? 's' : ''} awaiting verification</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Review and verify new accounts</div>
+                </div>
+                <button onClick={() => setTab('pending')} style={{ ...glassBtn, width: 'auto', padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>Review Now</button>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
-        {/* Delete User Modal */}
-        {deleteUserModal && (
-          <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div style={{ background: s.navy, padding: '2rem', borderRadius: '15px', border: `2px solid ${s.turquoise}`, maxWidth: '400px', width: '100%', textAlign: 'center' }}>
-              <h3 style={{ color: s.turquoise, marginBottom: '1rem' }}>Delete User</h3>
-              <p style={{ color: '#ccc', marginBottom: '2rem' }}>Are you sure you want to delete "{deleteUserModal.name}"? This cannot be undone.</p>
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                <button onClick={deleteUser} style={{ background: '#e74c3c', color: 'white', padding: '0.7rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Delete</button>
-                <button onClick={() => setDeleteUserModal(null)} style={{ background: '#666', color: 'white', padding: '0.7rem 1.5rem', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+        {/* ALL USERS */}
+        {tab === 'users' && (
+          <>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <h2 style={{ color: C.turquoise, flex: 1 }}>All Users</h2>
+              <input className="act-input" style={{ ...glassInput, maxWidth: '300px' }} value={userSearch}
+                onChange={e => setUserSearch(e.target.value)} placeholder="Search users..." />
+            </div>
+            {loading ? <div style={{ textAlign: 'center', color: C.turquoise, padding: '3rem' }}>Loading...</div> : (
+              <div style={{ ...glassCard, overflow: 'hidden' }} className="glass">
+                {filteredUsers.map((user, i) => (
+                  <div key={user.id + user.col} className="user-row"
+                    style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.5rem', borderBottom: i < filteredUsers.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '150px' }}>
+                      <div style={{ color: 'white', fontWeight: '600', fontSize: '0.95rem' }}>{user.name || 'No Name'}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.8rem' }}>{user.email}</div>
+                    </div>
+                    <span style={{ background: 'rgba(64,224,208,0.15)', color: C.turquoise, padding: '0.25rem 0.7rem', borderRadius: '20px', fontSize: '0.75rem', textTransform: 'capitalize' }}>{user.role}</span>
+                    <span style={{ background: user.isVerified ? 'rgba(50,205,50,0.15)' : 'rgba(255,165,0,0.15)', color: user.isVerified ? '#50c850' : '#ffa500', padding: '0.25rem 0.7rem', borderRadius: '20px', fontSize: '0.75rem' }}>
+                      {user.isVerified ? '✓ Verified' : '⏳ Pending'}
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={() => toggleVerify(user)}
+                        style={{ background: user.isVerified ? 'rgba(255,165,0,0.2)' : 'rgba(50,205,50,0.2)', color: user.isVerified ? '#ffa500' : '#50c850', border: 'none', borderRadius: '7px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Roboto Slab, serif' }}>
+                        {user.isVerified ? 'Unverify' : 'Verify'}
+                      </button>
+                      <button onClick={() => setDeleteModal(user)}
+                        style={{ background: 'rgba(255,80,80,0.2)', color: '#ff8080', border: 'none', borderRadius: '7px', padding: '0.4rem 0.8rem', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Roboto Slab, serif' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {filteredUsers.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>No users found</div>}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* PENDING */}
+        {tab === 'pending' && (
+          <>
+            <h2 style={{ color: C.turquoise, marginBottom: '1.5rem' }}>Pending Verification ({pendingUsers.length})</h2>
+            {pendingUsers.length === 0 ? (
+              <div style={{ ...glassCard, padding: '3rem', textAlign: 'center' }} className="glass">
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)' }}>All accounts are verified!</div>
+              </div>
+            ) : pendingUsers.map(user => (
+              <div key={user.id + user.col} style={{ ...glassCard, padding: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }} className="glass">
+                <div>
+                  <div style={{ color: 'white', fontWeight: '600' }}>{user.name || 'No Name'}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}>{user.email}</div>
+                  <div style={{ color: C.turquoise, fontSize: '0.8rem', textTransform: 'capitalize', marginTop: '0.25rem' }}>{user.role} • {user.orgName || 'No org'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button onClick={() => toggleVerify(user)}
+                    style={{ ...glassBtn, width: 'auto', padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>
+                    ✓ Verify
+                  </button>
+                  <button onClick={() => setDeleteModal(user)}
+                    style={{ ...glassBtn, width: 'auto', padding: '0.6rem 1.2rem', fontSize: '0.9rem', background: 'rgba(255,80,80,0.3)', color: '#ffaaaa', boxShadow: 'none' }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* SCHOOLS */}
+        {tab === 'schools' && (
+          <>
+            <h2 style={{ color: C.turquoise, marginBottom: '1.5rem' }}>Schools ({allSchools.length})</h2>
+            <div style={{ ...glassCard, padding: '1.5rem', marginBottom: '1.5rem' }} className="glass">
+              <h3 style={{ color: C.turquoise, marginBottom: '1rem', fontSize: '1rem' }}>Create New School</h3>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <input className="act-input" style={{ ...glassInput, flex: 1, minWidth: '200px' }} value={newSchoolName}
+                  onChange={e => setNewSchoolName(e.target.value)}
+                  placeholder="School name..." />
+                <button onClick={createSchool} disabled={creating}
+                  style={{ ...glassBtn, width: 'auto', padding: '0.85rem 1.5rem' }}>
+                  {creating ? 'Creating...' : 'Create School'}
+                </button>
               </div>
             </div>
-          </div>
+            <input className="act-input" style={{ ...glassInput, marginBottom: '1rem' }} value={schoolSearch}
+              onChange={e => setSchoolSearch(e.target.value)} placeholder="Search schools..." />
+            {filteredSchools.map(school => (
+              <div key={school.id} style={{ ...glassCard, padding: '1.25rem 1.5rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} className="glass">
+                <div>
+                  <div style={{ color: 'white', fontWeight: '600' }}>🏫 {school.name}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>ID: {school.id}</div>
+                </div>
+                <span style={{ background: 'rgba(50,205,50,0.15)', color: '#50c850', padding: '0.25rem 0.7rem', borderRadius: '20px', fontSize: '0.75rem' }}>Active</span>
+              </div>
+            ))}
+            {filteredSchools.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>No schools found</div>}
+          </>
+        )}
+
+        {/* TUTOR ORGS */}
+        {tab === 'tutor-orgs' && (
+          <>
+            <h2 style={{ color: C.turquoise, marginBottom: '1.5rem' }}>Tutor Organisations ({allTutorOrgs.length})</h2>
+            <div style={{ ...glassCard, padding: '1.5rem', marginBottom: '1.5rem' }} className="glass">
+              <h3 style={{ color: C.turquoise, marginBottom: '1rem', fontSize: '1rem' }}>Create New Tutor Organisation</h3>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <input className="act-input" style={{ ...glassInput, flex: 1, minWidth: '200px' }} value={newOrgName}
+                  onChange={e => setNewOrgName(e.target.value)} placeholder="Organisation name..." />
+                <button onClick={createTutorOrg} disabled={creating}
+                  style={{ ...glassBtn, width: 'auto', padding: '0.85rem 1.5rem' }}>
+                  {creating ? 'Creating...' : 'Create Org'}
+                </button>
+              </div>
+            </div>
+            {allTutorOrgs.map(org => (
+              <div key={org.id} style={{ ...glassCard, padding: '1.25rem 1.5rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} className="glass">
+                <div>
+                  <div style={{ color: 'white', fontWeight: '600' }}>📖 {org.name}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>ID: {org.id}</div>
+                </div>
+                <span style={{ background: 'rgba(50,205,50,0.15)', color: '#50c850', padding: '0.25rem 0.7rem', borderRadius: '20px', fontSize: '0.75rem' }}>Active</span>
+              </div>
+            ))}
+            {allTutorOrgs.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>No tutor organisations yet</div>}
+          </>
         )}
       </div>
+
+      {/* Delete Modal */}
+      {deleteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(5px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ ...glassCard, padding: '2rem', maxWidth: '400px', width: '100%', textAlign: 'center' }} className="glass">
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>⚠️</div>
+            <h3 style={{ color: C.turquoise, marginBottom: '0.75rem' }}>Confirm Delete</h3>
+            <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+              Are you sure you want to delete <strong style={{ color: 'white' }}>{deleteModal.name}</strong>? This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button onClick={deleteUser} style={{ ...glassBtn, width: 'auto', background: 'rgba(255,80,80,0.3)', color: '#ffaaaa', boxShadow: 'none', border: '1px solid rgba(255,80,80,0.4)' }}>Delete</button>
+              <button onClick={() => setDeleteModal(null)} style={{ ...glassBtn, width: 'auto', background: 'rgba(255,255,255,0.08)', color: 'white', boxShadow: 'none', border: '1px solid rgba(255,255,255,0.2)' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
