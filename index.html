@@ -4,6 +4,71 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MONTEMY</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { height: 100%; width: 100%; }
+      body {
+        font-family: 'Roboto Slab', serif !important;
+        background: transparent;
+        overflow-x: hidden;
+      }
+      * { font-family: 'Roboto Slab', serif !important; }
+
+      /* Global liquid glass */
+      .glass {
+        background: rgba(255,255,255,0.08);
+        backdrop-filter: blur(18px) saturate(180%);
+        -webkit-backdrop-filter: blur(18px) saturate(180%);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 16px;
+        position: relative;
+        overflow: hidden;
+      }
+      .glass::before {
+        content: '';
+        position: absolute;
+        top: -60%;
+        left: -60%;
+        width: 220%;
+        height: 220%;
+        background: radial-gradient(ellipse at 40% 40%, rgba(64,224,208,0.08) 0%, transparent 60%),
+                    radial-gradient(ellipse at 70% 70%, rgba(255,255,255,0.04) 0%, transparent 50%);
+        animation: glassWave 8s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .glass > * { position: relative; z-index: 1; }
+
+      @keyframes glassWave {
+        0%   { transform: translate(0,0) rotate(0deg); opacity:0.6; }
+        33%  { transform: translate(3%,2%) rotate(1deg); opacity:1; }
+        66%  { transform: translate(-2%,3%) rotate(-1deg); opacity:0.7; }
+        100% { transform: translate(0,0) rotate(0deg); opacity:0.6; }
+      }
+
+      /* Ripple on click */
+      .ripple-container { position: relative; overflow: hidden; }
+      .ripple {
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(64,224,208,0.35);
+        transform: scale(0);
+        animation: rippleAnim 0.7s linear;
+        pointer-events: none;
+        z-index: 99;
+      }
+      @keyframes rippleAnim {
+        to { transform: scale(4); opacity: 0; }
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(64,224,208,0.4); border-radius: 3px; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
